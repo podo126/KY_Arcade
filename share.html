@@ -82,10 +82,12 @@ button:focus-visible{outline:4px solid #fff;outline-offset:2px}
     if(D.r>=0)txt('내 순위 '+(D.r+1)+'위',W/2,by,20,KR,'#fff419','center');
     txt(D.d,W/2,by+36,10,PF,'#fff','center');
     const url=c.toDataURL('image/png');
+    const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+    if(isIOS)$('hint').textContent="공유 창에서 '이미지 저장'을 누르세요";
     $('card').src=url;$('card').hidden=false;$('save').hidden=false;$('hint').hidden=false;
     $('save').onclick=()=>c.toBlob(async b=>{
       const name='ky-arcade-record.png',f=new File([b],name,{type:'image/png'});
-      try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+      if(isIOS){try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return;}}catch(e){if(e&&e.name==='AbortError')return;}}
       const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();
     },'image/png');
   }
