@@ -1412,7 +1412,7 @@ function pickDiff(i,d){DIFF=DIFFS[d];const G=GAMES[i];
 function closePsel(){hideOv();mode='launcher';}
 function launch(i,n){hideOv();mode='launcher';
   if(!tryJoin(0))return;if(n===2&&!tryJoin(1)){n=1;toast('크레딧이 부족해 1인으로 시작합니다');}
-  gi=i;players=n;playT=0;best=[0,0];AU.bgm(true);padMap=(n===2&&padCount===1)?[1,0]:[0,1];
+  gi=i;players=n;playT=0;best=[0,0];startRun();AU.bgm(true);padMap=(n===2&&padCount===1)?[1,0]:[0,1];
   game=new GAMES[i].cls(API,false,{players:n});setupCanvas();mode='game';$('launcher').hidden=true;$('game').hidden=false;touch();
   const h=$('hint');h.innerHTML=keyHTML(GAMES[i].keys)+(n===2?'<br><small>1P '+(padMap[0]===1?'WASD + Z X C V':padCount?'패드 1':'WASD + Z X C V')+'  ·  2P '+(padCount>=1&&padMap[0]===1?'패드':padCount>=2?'패드 2':'방향키 + 숫자패드 1 2 3 4')+'</small>':'');hintPend=false;h.style.opacity=0;hintT=0;}
 let hintPend=false;
@@ -1443,7 +1443,7 @@ function upGame(){
   if(game.over&&!DIFF.cont){finish(false);return;}   /* HELL: 이어하기 없음 */
   if(game.over){$('tbadge').hidden=true;AU.duck(.4);mode='cont';contT=60*10;showMenu('GAME OVER','',[['이어하기',doCont],['메인으로',endSession]],null);}
   else if(performance.now()-lastInput>IDLE_GAME){toLauncher();startCut();}}
-function finish(clear){mode='result';resT=60*8;$('tbadge').hidden=true;AU.sfx(clear?'clear':'ko');
+function finish(clear){logEvent(GAMES[gi].id,'finish');mode='result';resT=60*8;$('tbadge').hidden=true;AU.sfx(clear?'clear':'ko');
   showMenu(clear?'CLEAR!':'GAME OVER',(game.resultText?game.resultText():'')+'\n잠시 후 메인 화면으로 돌아갑니다',[['메인으로',endSession]],endSession);}
 function upResult(){if(--resT<=0){endSession();return;}upMenu();}
 function doCont(){if(!tryJoin(0))return;hideOv();AU.duck(1);game.cont();mode='game';touch();}
@@ -1455,7 +1455,7 @@ function upCont(){contT--;$('ovS').textContent=`START 로 이어하기 · ${Math
    1) 함께 드린 share.html을 웹에 올리고(GitHub Pages·Netlify 등 정적 호스팅이면 충분, 서버/DB 불필요)
    2) 그 주소를 SHARE_URL에 넣으면 QR = 주소#랭킹데이터(base64url). share.html이 데이터를 읽어 이미지를 그리고 저장 버튼 제공
    데이터: {v:1, g:게임명, r:내 순번, d:날짜, l:[[아이디(최대 12자),점수]×10]} */
-const SHARE_URL='https://share.koongya.workers.dev/';   // 예) 'https://아이디.github.io/ky-arcade/share.html'
+const SHARE_URL='https://ky-arcade.koongya.workers.dev/share.html';   // 예) 'https://아이디.github.io/ky-arcade/share.html'
 function b64u(t){return btoa(unescape(encodeURIComponent(t))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 function shareData(G,L,hi){const d=new Date(L[hi].d),ds=d.getFullYear()+'.'+(d.getMonth()+1)+'.'+d.getDate();
   return SHARE_URL+'#'+b64u(JSON.stringify({v:1,g:G.name+(DIFF.id==='hell'?' HELL':''),r:hi,d:ds,l:L.map(e=>[[...e.n].slice(0,12).join(''),e.s])}));}
@@ -1502,7 +1502,7 @@ function nameType(c){if(typeof c!=='string')return;const el=$('rkIn');el.value+=
 function nameDel(){const el=$('rkIn');if(el.value){el.value=[...el.value].slice(0,-1).join('');AU.sfx('block');}}
 function namePick(){const c=NCH[nm.cur];if(c==='←')nameDel();else if(c==='OK')nameOK();else nameType(c);}
 function nameSkip(){if(mode!=='name')return;$('rkIn').blur();AU.sfx('block');$('rk').hidden=true;if(rkQ.length)nextName();else{mode='launcher';renderList();}}
-function nameOK(){if(mode!=='name')return;const G=GAMES[gi],n=$('rkIn').value.trim()||'PLAYER'+(nm.p+1),idx=rkAdd(rkId(G),n,nm.s);$('rkIn').blur();AU.sfx('clear');showRank(gi,idx,0);}   /* QR 화면은 시간 제한 없음: 버튼을 눌러야 닫힘 */
+function nameOK(){if(mode!=='name')return;const G=GAMES[gi],n=$('rkIn').value.trim()||'PLAYER'+(nm.p+1),idx=rkAdd(rkId(G),n,nm.s);submitScore(n,nm.s);$('rkIn').blur();AU.sfx('clear');showRank(gi,idx,0);}   /* QR 화면은 시간 제한 없음: 버튼을 눌러야 닫힘 */
 function upName(){if(performance.now()-lastInput>IDLE_GAME){$('rkIn').blur();$('rk').hidden=true;rkQ=[];startCut();return;}   /* 자리를 비우면 첫 장면으로 */
 let c=nm.cur;const r=Math.floor(c/NCOL),q=c%NCOL,rows=Math.ceil(NCH.length/NCOL);   /* 패드 전용 (키보드는 입력창) */
   if(navP('left'))c=r*NCOL+(q+NCOL-1)%NCOL;if(navP('right'))c=r*NCOL+(q+1)%NCOL;
@@ -1563,7 +1563,7 @@ function upMenu(){if(navP('up')){ovSel=(ovSel+ovItems.length-1)%ovItems.length;p
   else if((anyP('b')||escP)&&ovCancel)ovCancel();}
 function openPause(){mode='pause';AU.duck(.3);AU.sfx('select');showMenu('일시정지','난이도 '+DIFF.name,[['계속하기',resume],['처음부터',restart],['메인으로',endSession]],resume);}
 function resume(){hideOv();mode='game';AU.duck(1);touch();}
-function restart(){hideOv();playT=0;best=[0,0];AU.bgm(true);game=new GAMES[gi].cls(API,false,{players});setupCanvas();mode='game';touch();}
+function restart(){hideOv();playT=0;best=[0,0];startRun();AU.bgm(true);game=new GAMES[gi].cls(API,false,{players});setupCanvas();mode='game';touch();}
 function openSettings(k=0){mode='settings';showMenu('설정','',[[`프리 플레이: ${FREE?'켬':'끔'}`,()=>{FREE=!FREE;updCredit();openSettings(0);}],[`사운드: ${AU.on?'켬':'끔'}`,()=>{AU.on=!AU.on;openSettings(1);}],[`화면 필터: ${FILTER?'켬':'끔'}`,()=>{FILTER=!FILTER;try{localStorage.setItem('pixelArcadeFilter',FILTER?'1':'0');}catch(e){}applyFilter();openSettings(2);}],['랭킹 초기화',()=>{showMenu('랭킹 초기화','모든 게임의 랭킹 기록을 지웁니다',[['취소',()=>openSettings(4)],['초기화',()=>{rkSave({});renderList();toast('랭킹을 초기화했습니다');openSettings(4);}]],()=>openSettings(4));}],['전체 화면',()=>{const d=document;if(!d.fullscreenElement)d.documentElement.requestFullscreen&&d.documentElement.requestFullscreen().catch(()=>{});else d.exitFullscreen();}],['닫기',closeSet]],closeSet);ovSel=k;paintOv();}
 function closeSet(){hideOv();mode='launcher';}
 
@@ -1589,6 +1589,45 @@ renderList();updCredit();
 (document.fonts?Promise.all([document.fonts.load('8px "Press Start 2P"'),document.fonts.load('700 12px Galmuri11'),document.fonts.load('10px Galmuri9'),chLoad()]):Promise.resolve()).catch(()=>{}).finally(()=>requestAnimationFrame(loop));
 prepCut();
 AU.prep();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://bocghvafjcxhgxuwwrts.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_0rgqKtLgUIosom5C8j_SBw_MsgdLSDb';
+/* 인터넷이 없거나 CDN이 막혀도 게임은 정상 작동하도록: 연결 실패 시 sb=null, 서버 기록만 건너뜀 */
+const sb = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+/* ---- 서버 기록: 플레이 통계 + 점수 검증 등록 ---- */
+const SESSION = (crypto.randomUUID?.() || String(Math.random()).slice(2)).slice(0, 64);
+const DEVICE = /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+let RUN = null;
+function logEvent(game, event) {
+  if (!sb) return;
+  sb.rpc('log_event', { p_game: game, p_event: event, p_session: SESSION, p_device: DEVICE }).then(() => {}, () => {});
+}
+function startRun() {
+  RUN = null;
+  logEvent(GAMES[gi].id, 'start');
+  if (!sb) return;
+  sb.rpc('start_run', { p_game: rkId(GAMES[gi]), p_session: SESSION })
+    .then(({ data }) => { RUN = data || null; }, () => {});
+}
+function submitScore(name, score) {
+  if (!sb || !RUN) return;
+  sb.rpc('submit_score', { p_run: RUN, p_name: [...String(name)].slice(0, 12).join(''), p_score: Math.floor(score) })
+    .then(({ data, error }) => console.log('서버 점수 등록:', error ? error.message : data), () => {});
+}
+async function getRanking(game, limit = 10) {
+  if (!sb) return [];
+  const { data } = await sb.rpc('top_scores', { p_game: game, p_limit: limit });
+  return data || [];
+}
+async function getSetting(key) {
+  if (!sb) return null;
+  const { data } = await sb.from('game_settings').select('value').eq('key', key).maybeSingle();
+  return data?.value ?? null;
+}
+logEvent('arcade', 'visit');
 </script>
 </body>
 </html>
