@@ -1589,7 +1589,9 @@ const PER=5,pv=$('pv'),pg=pv.getContext('2d'),gc=$('gc');let gg=gc.getContext('2
 const API={sfx:n=>{AU.sfx(n);if(n==='clear'||n==='alarm')AU.jingle(1600);},join:i=>tryJoin(i),mouse:null};  /* 게임 중 마우스 입력 사용 안 함 */
 const DEMO_API={sfx:()=>{},join:()=>false,mouse:null};
 
-function unlock(){if(unlocked)return;unlocked=true;$('start').hidden=true;startCut();}
+/* 모바일: 이 탭에서 이미 메인까지 본 적이 있으면(이미지 저장 탭에서 돌아오며 새로고침된 경우 등) 시나리오 없이 메인으로 */
+const SEEN_KEY='kyArcadeMainSeen',seenMain=()=>{try{return IS_MOB&&sessionStorage.getItem(SEEN_KEY)==='1';}catch(e){return false;}};
+function unlock(){if(unlocked)return;unlocked=true;$('start').hidden=true;if(seenMain())toMain();else startCut();}
 $('start').addEventListener('click',()=>{AU.init();unlock();});
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),1800);}
 function coin(){credits=Math.min(99,credits+1);AU.init();AU.sfx('coin');updCredit();touch();}
@@ -1607,12 +1609,14 @@ function renderList(){const ul=$('items');ul.innerHTML='';const st=page*PER;
   $('pgT').textContent=`${page+1} / ${Math.ceil(GAMES.length/PER)}`;$('pvTitle').textContent=GAMES[sel].name;$('pvKeys').innerHTML=keyHTML(GAMES[sel].keys);
   const top=(d)=>{const L=rkList(GAMES[sel].id+(d==='crazy'?'_crazy':'')).slice(0,3);return `<b class="${d}">${d.toUpperCase()} TOP 3</b>`+(L.length?L.map((e,i)=>`<div><i>${i+1}</i>${esc(e.n)}<span>${e.s.toLocaleString()}</span></div>`).join(''):'<div class="none">기록 없음</div>');};
   $('pvRank').innerHTML=top('easy')+top('crazy');}   /* EASY · CRAZY 랭킹 TOP 3 함께 표시 */
-function setSel(n,quiet){n=(n+GAMES.length)%GAMES.length;if(n===sel)return;sel=n;page=Math.floor(sel/PER);renderList();if(!quiet)AU.sfx('move');}
+function setSel(n,quiet){const N=GAMES.length;n=((n%N)+N)%N;if(n===sel)return;sel=n;page=Math.floor(sel/PER);renderList();if(!quiet)AU.sfx('move');}
+/* 좌우: 페이지 이동 (같은 줄 유지, 마지막 페이지에 그 줄이 없으면 마지막 게임). 페이지가 1개면 움직이지 않음 */
+function setPage(d){const P=Math.ceil(GAMES.length/PER);if(P<2)return;const np=((page+d)%P+P)%P;setSel(Math.min(np*PER+sel%PER,GAMES.length-1));}
 $('items').addEventListener('wheel',e=>{e.preventDefault();setSel(sel+(e.deltaY>0?1:-1));},{passive:false});
-$('pgL').onclick=()=>setSel(sel-PER);$('pgR').onclick=()=>setSel(sel+PER);
+$('pgL').onclick=()=>setPage(-1);$('pgR').onclick=()=>setPage(1);
 $('preview').onclick=()=>startGame(sel);$('btnSet').onclick=()=>openSettings();$('coin').onclick=()=>coin();
 function upLauncher(){
-  if(navP('up'))setSel(sel-1);if(navP('down'))setSel(sel+1);if(navP('left'))setSel(sel-PER);if(navP('right'))setSel(sel+PER);
+  if(navP('up'))setSel(sel-1);if(navP('down'))setSel(sel+1);if(navP('left'))setPage(-1);if(navP('right'))setPage(1);
   if(anyP('a')||anyP('start')){startGame(sel);return;}
   if(anyP('d')){openSettings();return;}
   if(anyP('c')){AU.sfx('select');showRank(sel);return;}
@@ -1723,7 +1727,7 @@ function endSession(){const G=GAMES[gi];rkQ=[];best.forEach((v,i)=>{const r=rkRa
   toLauncher();if(rkQ.length)nextName();}
 const NCH='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._'.split('').concat(['←','OK']),NCOL=10;
 function nextName(){const q=rkQ.shift();if(!q){mode='launcher';$('rk').hidden=true;return;}
-  nm={p:q.p,s:q.s,rank:rkRank(rkId(GAMES[gi]),q.s),cur:0};mode='name';AU.sfx('power');drawName();$('rk').hidden=false;setTimeout(()=>$('rkIn').focus(),30);}
+  nm={p:q.p,s:q.s,rank:rkRank(rkId(GAMES[gi]),q.s),cur:0};mode='name';AU.sfx('power');drawName();$('rk').hidden=false;if(!IS_MOB)setTimeout(()=>$('rkIn').focus(),30);}   /* 모바일: 자동 포커스 안 함 → 입력창을 직접 눌렀을 때만 키보드 */
 function drawName(){const G=GAMES[gi];
   $('rkBox').innerHTML=`<button class="rk-close fr-item" id="rkClose">닫기 ✕</button><h2 class="ol">NEW RECORD!</h2><p class="rk-sub">${esc(G.name)} ${DIFF.name} · ${nm.rank}위 · ${nm.p+1}P <b>${nm.s.toLocaleString()}</b>점</p>
   <input id="rkIn" class="rk-in" type="text" autocomplete="off" spellcheck="false" placeholder="아이디를 입력하세요">
@@ -1753,7 +1757,7 @@ function showRank(g,hi=-1,t=0){const G=GAMES[g],L=rkList(rkId(G));mode='rank';rk
     :qr?`<div class="rk-qr"><b>기록 이미지 저장</b><img src="${qr}" alt="랭킹 이미지 QR"><span>휴대폰 카메라로 찍으면<br>내 기록이 표시된 랭킹 이미지를<br>저장할 수 있어요</span></div>`
     :e?`<div class="rk-qr off"><b>기록 이미지 저장</b><span>공유 페이지 주소(SHARE_URL)를<br>설정하면 QR이 표시됩니다</span></div>`:''}</div>
   ${IS_MOB?'<button class="fr-item rk-done" id="rkDone">닫기</button>':'<p class="rk-help"><span class="kp">A</span><span class="kk">Z</span> 닫기</p>'}`;$('rk').hidden=false;
-  if(IS_MOB){if(url)$('rkShare').onclick=()=>{AU.sfx('select');window.open(url,'_blank','noopener');};$('rkDone').onclick=()=>{AU.sfx('select');closeRank();};}}
+  if(IS_MOB){if(url)$('rkShare').onclick=()=>{AU.sfx('select');window.open(url,'_blank','noopener');closeRank();};   /* 저장 페이지를 열고 이 화면은 바로 메인으로 */$('rkDone').onclick=()=>{AU.sfx('select');closeRank();};}}
 function closeRank(){$('rk').hidden=true;if(rkQ.length)nextName();else{mode='launcher';renderList();}}
 function upRank(){if(performance.now()-lastInput>IDLE_MAIN){$('rk').hidden=true;rkQ=[];startCut();return;}
 if((rkT>0&&--rkT===0)||anyP('a')||anyP('b')||anyP('start')||escP)closeRank();}
@@ -1775,7 +1779,7 @@ function startCut(){hideOv();$('rk').hidden=true;$('board').hidden=true;$('launc
 function prepCut(){$('launcher').hidden=true;mode='cut';applyFilter();sizeCut();Cut.start();Cut.fade=0;$('cut').hidden=false;$('cut').classList.add('locked');$('cut').classList.remove('title');$('ttl').hidden=true;}
 function startTitle(){mode='title';AU.bgm(true,'bgm',1.5);AU.duck(.8);   /* 인트로 → 타이틀 BGM 크로스페이드 */
   Title.start();$('cut').classList.add('title');$('ttl').hidden=false;$('ttlLogo').src=$('logo').src;touch();}
-function toMain(){$('cut').hidden=true;AU.bgm(false,'bgm',.8);AU.duck(1);mode='launcher';applyFilter();$('launcher').hidden=false;renderList();padHold=true;touch();}
+function toMain(){try{if(IS_MOB)sessionStorage.setItem(SEEN_KEY,'1');}catch(e){}$('cut').hidden=true;AU.bgm(false,'bgm',.8);AU.duck(1);mode='launcher';applyFilter();$('launcher').hidden=false;renderList();padHold=true;touch();}
 const anyPress=()=>KEYS.some(k=>PIN[0].p[k]||PIN[1].p[k])||CUTCLICK;
 /* 스킵 버튼 없음: 같은 키(버튼)를 3초 안에 5번 이상 누르면 시나리오 건너뜀 */
 const SKIP_N=5,SKIP_MS=3000;let SKT={},CUTSKIP=false;
@@ -1826,7 +1830,7 @@ let acc=0,last=performance.now();
 function loop(now){acc+=Math.min(100,now-last);last=now;let n=0;while(acc>=1000/60&&n<4){frame();acc-=1000/60;n++;}render();requestAnimationFrame(loop);}
 renderList();updCredit();
 (document.fonts?Promise.all([document.fonts.load('8px "Press Start 2P"'),document.fonts.load('700 12px Galmuri11'),document.fonts.load('10px Galmuri9'),chLoad()]):Promise.resolve()).catch(()=>{}).finally(()=>requestAnimationFrame(loop));
-prepCut();
+if(seenMain()){mode='launcher';$('launcher').hidden=false;applyFilter();}else prepCut();   /* 다시 열린 모바일 탭: 시작 화면 뒤에 메인을 깔아 둠 */
 AU.prep();
 </script>
 <script data-src="mobile.js">
@@ -1917,12 +1921,17 @@ html.mob #coin .small{display:none}
   const orient=()=>{const p=pm.matches;DOC.classList.toggle('portrait',p);if(p){setDir(0,0,0,0);for(const k in H)H[k]=0;if(mode==='game')openPause();}};
   pm.addEventListener?pm.addEventListener('change',orient):pm.addListener(orient);
   /* ---- 첫 터치: 전체화면 + 가로 고정 (사용자 동작이 필요해 touchend에서 시도, 실패해도 무시) ---- */
-  let fsTried=false;
-  const goFull=()=>{AU.init();if(fsTried)return;fsTried=true;try{const el=DOC,rq=el.requestFullscreen||el.webkitRequestFullscreen;
+  /* 브라우저 정책상 터치 없이 전체화면은 불가 → 첫 터치(시작 화면)에서 바로 전환하고,
+     전체화면이 풀리면(새 탭으로 이미지 저장 후 복귀 등) 다음 터치에서 다시 전환. 입력창 터치는 제외 */
+  let fsBusy=false;
+  const isFull=()=>!!(document.fullscreenElement||document.webkitFullscreenElement);
+  const goFull=e=>{AU.init();if(fsBusy||isFull()||(e&&!notInput(e)))return;try{const el=DOC,rq=el.requestFullscreen||el.webkitRequestFullscreen;
       const lock=()=>{try{const o=screen.orientation;if(o&&o.lock)o.lock('landscape').catch(()=>{});}catch(_){}};
-      if(rq&&!document.fullscreenElement){const r=rq.call(el,{navigationUI:'hide'});if(r&&r.then)r.then(lock,()=>{});else lock();}else lock();}catch(_){}};
+      if(rq){fsBusy=true;const r=rq.call(el,{navigationUI:'hide'}),done=()=>{fsBusy=false;};if(r&&r.then)r.then(()=>{done();lock();},done);else{done();lock();}}else lock();}catch(_){fsBusy=false;}};
   addEventListener('touchend',goFull,{passive:true});addEventListener('pointerup',goFull);
-  addEventListener('pointerdown',()=>{AU.init();touch();},{capture:true,passive:true});
+  addEventListener('pointerdown',e=>{AU.init();touch();
+    /* 아이디 입력: 입력창 밖(글자판·닫기·터치 버튼 등)을 누르면 휴대폰 키보드를 내림 */
+    const a=document.activeElement;if(a&&a.id==='rkIn'&&e.target!==a)a.blur();},{capture:true,passive:true});
   /* ---- 확대·스크롤·길게 누르기 메뉴 막기 (입력창 제외) ---- */
   const notInput=e=>!(e.target&&e.target.tagName==='INPUT');
   document.addEventListener('contextmenu',e=>e.preventDefault());
