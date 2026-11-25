@@ -23,6 +23,7 @@ body{font:700 24px/1 var(--kr);user-select:none;-webkit-user-select:none;-webkit
   background-image:linear-gradient(45deg,#0b84b8 25%,transparent 25%,transparent 75%,#0b84b8 75%),linear-gradient(45deg,#0b84b8 25%,transparent 25%,transparent 75%,#0b84b8 75%);
   background-size:64px 64px;background-position:0 0,32px 32px}
 #stage.nofilter::after{display:none}
+#stage:has(#game:not([hidden]))::after{display:none}   /* 게임 화면: 줄무늬를 캔버스 안에서 도트 줄에 맞춰 그림 (도트 모양이 고르게 유지) */
 #stage::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 2px,transparent 2px 4px);z-index:50}
 [hidden]{display:none!important}
 .abs{position:absolute}
@@ -59,7 +60,7 @@ body{font:700 24px/1 var(--kr);user-select:none;-webkit-user-select:none;-webkit
 
 /* 미리보기 */
 #preview{left:540px;top:172px;width:700px;height:408px;cursor:pointer}
-#pv{display:block;width:668px;height:376px;image-rendering:auto;background:#000}
+#pv{display:block;width:668px;height:376px;image-rendering:pixelated;background:#000}
 #pvTitle{left:12px;bottom:46px;font-size:36px;color:var(--yellow)}
 #pvKeys{left:0;right:0;bottom:0;padding:10px 14px;font-size:12px;line-height:1.5;color:var(--white);background:rgba(0,0,0,.72)}
 #pvDemo{left:14px;top:14px;font:10px var(--pf);color:#ff5050;animation:blink 1s steps(1) infinite}
@@ -77,7 +78,7 @@ body{font:700 24px/1 var(--kr);user-select:none;-webkit-user-select:none;-webkit
 
 /* 게임 화면 */
 #game{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:inherit}
-#gc{image-rendering:auto;display:block;background:#000;box-shadow:0 0 0 4px #fff,0 0 0 8px #000}
+#gc{image-rendering:pixelated;display:block;background:#000;box-shadow:0 0 0 4px #fff,0 0 0 8px #000}
 .side{position:absolute;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:24px;padding:0 24px;box-sizing:border-box;text-align:center}
 #sideL{left:0}#sideR{right:0}
 .side h3{font:700 36px/1.2 var(--kr);color:var(--yellow);margin:0;word-break:keep-all}
@@ -198,6 +199,13 @@ const rnd=(a,b)=>a+Math.random()*(b-a), ri=(a,b)=>Math.floor(a+Math.random()*(b-
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const ov=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 const PF='"Press Start 2P",monospace';
+/* 정수 배율: 1도트 = 정확히 N×N 화면 픽셀. 홀수 배율(5·7·9…)은 한 단계 낮춤 → 반 도트 그림(쿵야 2배 해상도 0.5, 1.5배)도 정사각형 유지. 3배 이하는 그대로 */
+function stageDev(){const r=document.getElementById('stage').getBoundingClientRect();return Math.max(.1,r.width/1280*(window.devicePixelRatio||1));}
+/* 캔버스 위치를 화면 픽셀 경계에 맞춤 (0.5픽셀 어긋나면 도트 가장자리가 섞임). 보이는 상태에서만 계산 가능 → render()에서 처리 */
+let SNAP=new Set();function snapLater(el){SNAP.add(el);}
+function snapNow(){for(const el of SNAP){el.style.translate='';const r=el.getBoundingClientRect();if(!r.width)continue;const d=window.devicePixelRatio||1,dev=stageDev();
+  el.style.translate=`${(Math.round(r.left*d)-r.left*d)/dev}px ${(Math.round(r.top*d)-r.top*d)/dev}px`;SNAP.delete(el);}}
+function pickN(m){let N=Math.max(1,Math.floor(m+1e-6));if(N>=5&&N%2)N--;return N;}
 function mkCanvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
 function R(g,x,y,w,h,c){g.fillStyle=c;g.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));}
 /* 위험 표시 깜빡임 (공통 기준): 12프레임 켜짐 / 12프레임 꺼짐 = 초당 2.5번 → 눈으로 확실히 보이고, 광과민 기준(초당 3번 이하)도 지킴.
@@ -209,7 +217,26 @@ const BLINK_HALF=12;function warnBlink(t){return Math.floor(t/BLINK_HALF)%2===0;
 const PH_BOX=true,PH_COL={enemy:'255,70,70',ally:'80,220,120',prop:'150,180,255'};
 function phBox(g,x,y,w,h,kind){const c=PH_COL[kind]||PH_COL.prop,L=`rgba(${c},.85)`;x=Math.round(x);y=Math.round(y);w=Math.round(w);h=Math.round(h);
   R(g,x,y,w,h,`rgba(${c},.28)`);R(g,x,y,w,1,L);R(g,x,y+h-1,w,1,L);R(g,x,y,1,h,L);R(g,x+w-1,y,1,h,L);}
-function T(g,s,x,y,c='#fff',al='left',sz=8){g.font=sz+'px '+PF;g.textAlign=al;g.textBaseline='top';g.fillStyle='#000';g.fillText(s,x+1,y+1);g.fillStyle=c;g.fillText(s,x,y);}
+/* 픽셀 글자: 글자를 8배 크기로 그린 뒤 도트마다 가운데 픽셀만 읽어 1도트 해상도 그림으로 만듦(있음/없음 두 단계).
+   작은 크기로 바로 그리면 브라우저 글꼴 보정 때문에 픽셀 글꼴 모양이 찌그러짐. 결과를 도트 격자에 맞춰 붙임 → 확대해도 번짐 없이 정사각형 도트 */
+const TXC=new Map(),TXU=8;let TXT_BIG=null,TXT_SM=null;
+const txFontU=font=>font.replace(/(\d+(?:\.\d+)?)px/,(m,n)=>(+n*TXU)+'px');
+function txLayer(dst,fontU,s,list,col,w,h,by){const U=TXU;if(!TXT_BIG){TXT_BIG=mkCanvas(8,8);TXT_SM=mkCanvas(8,8);}
+  const B=TXT_BIG;B.width=w*U;B.height=h*U;const g=B.getContext('2d',{willReadFrequently:true});g.font=fontU;g.textAlign='left';g.textBaseline='alphabetic';g.fillStyle='#fff';
+  for(const o of list)g.fillText(s,(2+o[0])*U,(by+o[1])*U);
+  const a=g.getImageData(0,0,w*U,h*U).data,S=TXT_SM;S.width=w;S.height=h;const sg=S.getContext('2d'),d=sg.createImageData(w,h),q=d.data,hU=U>>1;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(a[((y*U+hU)*w*U+x*U+hU)*4+3]>=128){const i=(y*w+x)*4;q[i]=q[i+1]=q[i+2]=q[i+3]=255;}
+  sg.putImageData(d,0,0);sg.globalCompositeOperation='source-in';sg.fillStyle=col;sg.fillRect(0,0,w,h);dst.drawImage(S,0,0);}
+function txBmp(font,s,c,offs,sz){const key=font+'\u0001'+s+'\u0001'+c+'\u0001'+offs.length;let b=TXC.get(key);if(b)return b;
+  if(!TXT_BIG){TXT_BIG=mkCanvas(8,8);TXT_SM=mkCanvas(8,8);}const fontU=txFontU(font),m=TXT_BIG.getContext('2d',{willReadFrequently:true});m.font=fontU;m.textBaseline='alphabetic';
+  const mt=m.measureText(s),tw=mt.width/TXU,by=2+Math.round((mt.fontBoundingBoxAscent!=null?mt.fontBoundingBoxAscent:sz*.8*TXU)/TXU);
+  const w=Math.ceil(tw)+6,h=Math.ceil(sz*1.5)+6;b=mkCanvas(w,h);const g=b.getContext('2d');
+  if(offs.length)txLayer(g,fontU,s,offs,'#000',w,h,by);txLayer(g,fontU,s,[[0,0]],c,w,h,by);b.tw=tw;
+  const ok=!document.fonts||document.fonts.check(font);if(ok){if(TXC.size>600)TXC.clear();TXC.set(key,b);}   /* 글꼴 로딩 전 그림은 저장하지 않음 */
+  return b;}
+function pxText(g,font,s,x,y,c,al,offs,sz){s=String(s);if(!s)return;const b=txBmp(font,s,c,offs,sz),ox=al==='center'?b.tw/2:al==='right'?b.tw:0;
+  const sm=g.imageSmoothingEnabled;g.imageSmoothingEnabled=false;g.drawImage(b,Math.round(x-ox)-2,Math.round(y)-2);g.imageSmoothingEnabled=sm;}
+function T(g,s,x,y,c='#fff',al='left',sz=8){pxText(g,sz+'px '+PF,s,x,y,c,al,[[1,1]],sz);}
 /* 화면에 그리는 조작키 글자: PC는 pc 문구, 모바일(터치 버튼 A B C D)은 mob 문구 (IS_MOB은 셸에서 정의) */
 const KEYTXT=(pc,mob)=>(typeof IS_MOB!=='undefined'&&IS_MOB)?mob:pc;
 function hex(c){const n=parseInt(c.slice(1),16);return[n>>16&255,n>>8&255,n&255];}
@@ -262,9 +289,8 @@ function pxHit(A,B){if(Array.isArray(A))return A.some(a=>pxHit(a,B));if(Array.is
 
 
 /* 한글 픽셀 텍스트 (Galmuri11 / 영문 소형 Galmuri9) */
-function K9(g,s,x,y,c='#fff',al='left'){g.font='10px Galmuri9,monospace';g.textAlign=al;g.textBaseline='top';g.fillStyle='#000';g.fillText(s,x+1,y+1);g.fillStyle=c;g.fillText(s,x,y);}
-function K(g,s,x,y,c='#fff',al='left',sz=12){g.font='700 '+sz+'px Galmuri11,monospace';g.textAlign=al;g.textBaseline='top';g.fillStyle='#000';
-  for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1],[1,1]])g.fillText(s,x+dx,y+dy);g.fillStyle=c;g.fillText(s,x,y);}
+function K9(g,s,x,y,c='#fff',al='left'){pxText(g,'10px Galmuri9,monospace',s,x,y,c,al,[[1,1]],10);}
+function K(g,s,x,y,c='#fff',al='left',sz=12){pxText(g,'700 '+sz+'px Galmuri11,monospace',s,x,y,c,al,[[1,0],[-1,0],[0,1],[0,-1],[1,1]],sz);}
 
 /* 난이도: 게임은 생성될 때 DIFF 값을 읽음 (EASY = 기본 밸런스) */
 const DIFFS={easy:{id:'easy',name:'EASY',spd:1,hp:1,fire:1,lives:3,cont:true},
@@ -323,9 +349,11 @@ CHS.box_milk="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYCAYAAACIhL/A
 CHS.box_onion="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAYCAYAAACIhL/AAAACMUlEQVR42s1Wv0/bQBT+7BCiighYutAOhA7eycKGqL11KX8BA6z8A0yuVKljhwwsZOg/kI3NaUW7ZAjp0gVVTTr0hzpEQi6WfOcadwCfzsfZd4a49JNOl3fvSfflfe+9szF6/TwBhz/xJUTM1UyoYmSYq5kIwkgZRymRnk/9EGZ6YbpSkChmi/cHYZTxFS2e3MHhMdsPDo9BKWG72/Xy/yRvkCiWBvHnlBLMzzdKZaLI73Y9uLsO+w2A2QBgplkTyVFKpEvlKwt31ynMoPHh1bOkTBaqBp/RqR/CbNRr/xW53AyK5MR6kNWKTCq+fu4K1sV5aRbr4wZpYa8CZtmCvo1MMnSIl9lLEWRyCZLpXq6D/YaDDvGw33DUBKXz6VpinQxmyqCE3D3LVktc1LlpFsWL2ZnEp4ut1QSjyTmeProofi515tENqW/ZFKmkHeLB3gGSow0YewMkRxt4+7159ybRHbCquutZNoZuG9vjK3Lb40H+S9J/4SSqjpzlGNlaTfD+009sWos4/RbhJT1Fz7Lx7qshnYOFBGeNtO7aj+s4OfMBAM2FB8yOmyt6g7oqcuZOH+utZRh7A2xaiwCQsWsXP/KbZPxlXDHBFoZuG0YU4PKNDUQB8w3dNkQeSw9XZtskukjqCxlblLyyLlah259gvbWM0eQcRhTg5MxnMqfkPv8KAQC/Sayeg1WRBICP19WUEuLBk8sQXHuydq/fglP/iuyS7kvyr4nlPnWqgPvGX04nh3z/qtxLAAAAAElFTkSuQmCC";
 CHS.box_groc="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACaUlEQVR42tVX3YrTQBT+8iMdt0kJXbYiiyDoA3mZF/DaPoCXvfRC8dIX8BW89D1cWJCubEvDbCepk7UxXnTPMPmZJmmbBT8ogXTmfN+Z8zM51vfPYY4HyFRi5HsAgLWIoYMNGFZ89+75JMCvBS/8fx54OATuzfIOADAeDRCtU6RbB8lmA8exIRKJBZcAgEnA4A8ZAOB6vsLLy3Ncz1fK0M3yTu0h+EOGqzlXe3V7ry4DiETC+vbhTT7yvVqP94FOay1ibLMc6X120EnYpuNuAhswrEWMke/BdSz1nsLUOgRswCBT2Yr4x8+lOloAyLK/iNZpZd1tJAAAz8Z+swAyuoOoLCAykUi8fnFRCUHEi3u8s6dKhG6bYk/5tOASk4DB0qugLcrxV944VqvwFU7gGPKCIQP5+49fjbZm07CbAJPnTfkzm4YFQbNpqITZXQRssxwRF6pZkecU9yYQeaUM24KIKPHaxpy8JXI9LHbXHNC97ZJwRFrOCYOAvFFE22Mv50E5BG6V2Hr4nRamajioD5wSbt8ETX3Ajje/G0zkrfLikHwAAHsc+Ngvwio9jyf/9KVUhs0icFLyZaKVYcQFIi56F1FHXugDfYqgmL97G2I2DXExNFQBiYi46NxomirBHQyxTZP6PkBeE3m55fYJu+6SeSzyQg4Q6bHk5Uun7km/ymV0Ks/L977eDWfTsNiIHqP2TV9FvQnQP7maQvR/3oY0eNC8YJolTMPJbSTUPlc3RgbrBtLyGn3gmAQMsczUu1juGo7HHIhEqsGUnrs1u/Xu1ZwbPV1wWZho9q3TccaeYCP/VATRU8c/Hb9hcFwPVMIAAAAASUVORK5CYII=";
 CHS.floor_tile="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAoCAYAAAD32nqhAAACIUlEQVR42qWVT8vjIBDGf00aCNJe5uzRr9qP2FuhsIQ9ekkJARH3sO+4xpq+7b5CiI4z4/x5Hj1cLpc0DAPee87nMwDDMBBCIMbIsixZPs8zxhgAxnHEe083zzMhhKwUY8R7D8CyLIgIMUZijAD0fU/f94QQEBE6Y0xWmOeZvu85n88Mw4AxhhAC4zjS9z0ikiMchoF1XenU6ziOTyksywKA954YIyEENF11fLxer5xOJwAejwen0yn/Ae73e56rDpD1unJDhbWsNqz1EpBEJAHJWptUpnPdq/eBdEwp8ZNx+PL036MrF9bab+etdTO3er33Hay1aZqmDJK94b3HOcftdttE0SlcjTF47zPWda1zIBsDTNP0d1K2qP729jbpiUiy1ibnXNOwlLdq05U57s1b9bHWIiIcRCSpgbU2E8gYw7Is2VntROUHEUnGmFyUV90QEdZ1Rbvmvee4qWhxcrnW/TI1dZC70CJTXTzdq3Q+Q94TEr9O34QH8Ov3m2Ryzm2MnXOf01lEEJENVN+OQNtWGn86Ut2JV/x4grWIJP2+a2NL3pXAEJENqMqiKvo05fJWeiv8MsoNDpxzSQvY4kFJqla3KL23uF+fqvfHBoktrpeEat0T1lqmafr3LtSILA32KG6MId/KZWVbp7fuhaeX6VUR67shp2CtTarQYuWrOjTfRvW8F1XZznVdXz+uatzqvY4fP+8bMrVAs/dK6foP4Rzm2URPYPoAAAAASUVORK5CYII=";
-CHS.street_tree="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB0AAAAzCAYAAABrNQNJAAAE30lEQVR42u1YT2gjVRj/vaG0S92CEBmGJpltB6FbNqSQ5FC07NZK0YMIWxQKgQWxBw+lSxEKCzl4KKwsSNhlDx4iBaFQUCr04EWsbYkeJAlaWqIHs+4kXYbRgNC1tEH2eajf883MmySVRT30g5BkMvN+7/vz+33fC0OXduf+W3xpfoWtred5i5UAALF4BK49DEMfAABMTsyxbtZiOIO998HL3LIMxOIRAECj3kQsHhHvuq4jYebYUwHdKhb4kwu7nmuNelN4K5t2nMTkxBzbKhZ4mOdaN6CTE3OMQMhi8QhS6dHAvU8u7GKrWOCOexi6Xk8nwLX1PJ+dWWR+jwDAdd3AtanMvX8e3rX1PAeA2ZlFUTyp9GgASNf1wDXXHsbszCI7k6d+QN18ACCi9EwG1nX9r3yXzubp2nqe24/+Lhoj2oIqtCpgsk4VzGQeGtEWajUHANDfZ+LoxEZ/nwkj2lJWqr+aY/GIyOlmaYGH5ZfJgGTOQS/kDQCAZRlKYD91ZI/DPNcAwBxMem4yoi04B70CrL/PBADPJmTqEDgBJswco5eqDpg/j5TDRr2pBKGNkAIBQKVcVXI2LLeBnKrCJ0udvBnLMgSY36OpzD22WVrgKmkUirQ0v8IopHK4aBPkWSo9ijfefElcq5Sr+HzjJ09+KQL0vlla4G1lUC6MAOldV1y7eu2KpwZ2tvcBADvb+0iYObZnL/OwSveALs2vMLkK/Xorg+u6Dl3XPQUHQERBDqmfOqGC77puIL8EJFtmfADOQa+n6MZGhjgAZKcLymLS/Gq0mN0I9TBM8I1oS9AKAL7/8Wc2NjLEV7+YUysS9b219Tw39AE47iFu37qL/OrrHTXWv4FGvemhTqVc9aiUhzJbxQK3f/lKqBGFTfaYqjcMNCzvlXIVN66vBnNKDZcAj05swctOmksAlXLVE/KwyUK0NvvRLoyoV/5kxZE9buelTDG59xJPKcyB6s2MD8CyjNBiqpSrnsXlz0QzuidsjR6qvnY7l71u10tVNJNFZ89e5gkzx0SC/VIl664/rLJ3/sZgWQZqNQdXr13x5FWuYA0A9uxl3qg3u+anXyQsyxCyWKs56O8zA4UkO6X5w6jqle3AU+lR0X36+0xYloGjEzvQcRr1Jj7+LMsBQNsqFng3ldnJYvEIMuMDqNUc0W/lTcfiEcFXRtM7EV8VYjmvKuVpZwkzJ/oqCYVGR4HsdMGTB78wyD2yW0AAIqSu64rnNMc9xLfffY27H+UCIUmlRz3cC7PsdCF0JpbX+/STU6ntoYFaJV0USvpOwKQ2i9kN0VUa9SaX+Ro2HHhksMW885EMJj9AnKzVHLz7/ouIxSPY2d7nKjB5DQC4PPwagC9PQc3BJBLp30NDJIeK6EHAsjD4hzh/9KYyp+cbpjqHasdJUKuTd+o/LIWNqTS6+DesFPzJiTmmHScDheTnL32XjyBhYKo5ibU7fT8/aAEAfuv5Rjkd7JWegW4+gGsPg/6HAIAb11fFNOi6rnpyCAOlz8+ZDp794wUBDgC/2gZuvr2MW7dvns5JZ/yzA50OxrKNjQxxmvb+NXsaoBr+AzsHPQc9B/3/gyp1cmn+HaXiPGw+xg+VIgDglelX8bD5GJciFz2/X4pcxJ37H7bV356wxcPscmrCc4//3nbPkv0J1TbB+KNEF48AAAAASUVORK5CYII=";   /* 가로수 A 29x51 (아래 회색 = 나무 받침 덮개, 줄기 중심 x=13) */
-CHS.street_tree2="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB0AAAAzCAYAAABrNQNJAAAFC0lEQVR42u1YTUgcZxh+vkE02CwUtgyDuzuJQyFZXAzszkGKqDVIeyiFSAuCECj10IMYvEgKe8hBKAREKjn0sCVQEIQECx5yKTUqWkpZl1YU20M2zcxGlmkGCqaiS8mXg7xfvvnbXcWUUvqC7Ow4M8/3vt/zPO87y9Bk3L7zCZ8av8sWFmd5jRUBAMlUHI7VCU2NAQAGesdYM89iOEHcmrnKDUNDMhUHAFRsF8lUXHyqqoqMnmdnArqyXuAvzm15zlVsV2Qrh3LYjYHeMbayXuBRmStRQN98O8rpeKB3jBEIRTIVRzaXDtz34twWVtYLvOrsnz7ThcVZPjI8yZaLE7yZqgyac6cv78LiLAeAkeFJQZ5sLg3HcTzXqaoaOOdYnRgZnvQ8e7k4wWlBrBlAVX8cuWpVVY+BHEcclzZ3cf3aPGs604XFWW7tvSKNlqgFyFIPHEBDBjNZh1qihnK5CgBob9NxcGShvU2HlqiFMtXP5mQqLvZULmcoKAFSVJ+2Ql4AABiGFgrsl46ccVTmCgDoHd2ei7REDdWnrQKsvU0HAM8iZOkQOAFm9DyjPz/JRKbyPtIeVmw3FIQWQg5ExAnTbNTeBvY0rHyy1cmLMQxNgPkzGjTn2HJxgodZo3CkqfG7jEoql4sWQZllc2l89PG74lxpcxcPlh559pcqQJ9+Y1H8J2ViBETvOOJcX3+XhwNrqzsAgLXVHWT0PNu2pnnTOqUFqKqK0uZupEwoiwdLjyAzP5tLi3ISsL+8zG/y9bQY5j6O46D44z4Ojiyxx3KFwrTq6TKt3ETFduHvKFFBD9cSNSErisnRpcj7lJX1AifZaGoMrdzEzM2NukAyUYhcZk/MU5H578ZQsV2EdSdGTdr646FwIwAwe2KejIm9MmijKhAv/OavAAA1XAI8OLKELht5LgGUNnc9JY+aLJaLE7wFAKy9LWgJr/3JjiNnXC9LmUAyoajEg+YcGzTnWGBcMXtiMAwtkkylzV3Pw+VjVVVRsV1xTdQzWoh99VYuZ91ISlFbUbFdbFvTPKPnGfObQpjv+ssqZ+dvDIahoVyuoq+/y7Ovsl4Vco6T6JOkIgORLZbLVbS36QEiyUkp/jKG9cp64NlcWnSf9jYdhqHh4MgKdJyK7YqxVphDI2Y2imQqDrMnhnK5KvqtvOhkKi70ymh6J+FTWehm/yhC14Q17bDI6HnRV8koFHoVGB0qePaB9shPJCpps0EldRxH3KdUnX389PMGvvw6HyhJNpf2aC8qRocKCJuF/Ly4f+/YaltooA6zrvv3HkJ+SyNgcpuK7WLm5gZ++e13VrFdLus1TH4ec7D2tlBj3vmoYrtCa/INpEna89n5D7G2usPDwGSdA8Dlzg8AfH8Mqnd0I5P7K7JEcqlIHgQsG4N/iPNXb9CcDL7LEJOVw25Qq5NX6n9ZihpTifVydfr6u4QreQx/oHeMKYfdASL59Uvf5VeQMDB5EbINsnpv3293GACAP1t+EASRNbpdfAOq/hiO1Qn6HQIArl+bF9Og4ziBOSkwmJFryE71ll7Fm3+/I8AB4Jml4can0/j8ixvHc9IJf+wIGDIJmqQkx5VLF/mVSxf5SYzhVHFr5io/DeiZxVmAKvWy+tdEVKavdbGvpbz/RPwP+t8DDfXJqfHPQtn5xH2OX0vrAID3ht7HE/c5LsTPe/5/IX4et+98Vdd/W6IeHhWXs72ea/zX1ruX4iXi1PPWoAAjfgAAAABJRU5ErkJggg==";   /* 가로수 B 29x51 (잎이 흩날리는 버전, A와 같은 크기·줄기 위치) */
-CHS.street_lamp="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAA6CAYAAABWBrIPAAABFElEQVR42u2XPW7CMBTHf46ydqgHInGC+AAdql6AIzBzCM4Bt+iUGXXvGXKDSu7gpWslMwDWw0A+DBWtaktRkie9X/7vw44NI4cxxhtjvLQVYwHnngtuMIoUFQDW2nGQGADgnEtKZLiLCwA1RIG1Fuecko7SXw2JfQ8AQGvt9+EEW9kVd9u2aK2HVacL8P46SSuxBNRPy35IrOIEUE77Ic3adypQD7Oj5FdVdQIpAZq152X+SftWAwQFMeCikvp5BRASeHgfCgh94r82nu+PneFx0el8sU/GfPWqWfz7IOdK/IfDyZAfhMS9knOSIRny7yBy63n//06sJpc4L9Q3h8ijy2EXef/qSFDyQVJujFUqQE7GLTr2cAGeoCyUAAAAAElFTkSuQmCC";   /* 가로등 17x58 (기둥 중심 x=13, 등갓 렌즈 = 왼쪽 아래 노란 면, 렌즈 중심 약 (4,13)) */
+CHS.street_tree="data:image/png;base64,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";   /* 가로수 A 29x51 (아래 회색 = 나무 받침 덮개, 줄기 중심 x=13) */
+CHS.street_tree2="data:image/png;base64,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";   /* 가로수 B 29x51 (잎이 흩날리는 버전, A와 같은 크기·줄기 위치) */
+/* 쿵야 런 인질(양파쿵야) 36x52 x 4프레임: 0 잡힘 몸통 · 1 잡힘 우울 줄 · 2 풀려남 몸통 · 3 풀려남 반짝이. 기준점 = 가운데 아래(발) */
+CHS.hostage="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAAA0CAYAAABly7FAAAAE+UlEQVR4nO2dQWvUQBTHZ9btigfrpVi3RUH24EHwWuipYA9F6BfRg2c/Rg/uN/DitSAeKngqeBKEHkTWQmtbKz3Zg7iVHXnbTJidnZmdSSbJe9n8IewmzUsy//zyZibJThkjrnd7X0TVx4BRQ/G+FF9aZeykUfnw/GWvo0F0KbbrcZGaso1c1mSiScWEB7Zlg6gdYyeN8KnDt3iM7dzmu/xSMAGftarCmoxTnmzwkAaoEQ6RAIh4thHaRLK3ZVPTBipW4u23V+lM/+gN+/j0CE44j93bitXmqWUGIiKhZZgpeEAbHx7IdW1xQfCAYnbZqwKokDRNqOoSAEsCjNChkZ++cT6CjHOTvRh/h8+qMlCMKkwcXPTHX84GX8efm2s70dK0r55tPqnEQKZkGgAFMkxSTaXLAuO8ywHQVFl9xQBoCp45AMaovgJKAoNzfYDHAZe3qoQnBCBjet379HICnM21HfmVW2J4HUHqZwAhBjwY1A7JMiAARgHFCU/eqk2HAwMsjdhEry+oES1BgMwDkwqSXGaDp1E9H9T6ZCD+eOm5UIFJQDFKXc+QreYmg2w42kFJV56cTLcOQk6o0OExVWVSOmTJunUFSJiAGY4GxpU7rd7EvBLLqUAkbx0EA5TFIEXoDcoo4fJjlhS/OLU2EC/aHINRJEzylIjlDUWQfA5UxDKnhhCJ2N5Q9KhVtkHJNqk8oigdHmoe2QBqDLKrUG+oQWQCqDHIrlK8oQRRpa9zUDCoURhApV5hxFSJN0PkF5nXw1T1vk6oibNiYVmn1Sv99Y8Y6hjud4X4kzeeBEB6IWHet5B5YrHLVpaOZxnzxmMRx1B9EbjvUXnV3kHqEYqX6utSjQ0zQJY3nlQb6PT0lC3d+zNXBvmUTYjrNi7nPFMbKGs8iW68Wshut+t6UOqMhSkkFrtMZRFCsIuft0qJJwGQrZA+IOSJpayVlZVK49G2gSC9AgDwGSoZI1N13cQzeBIzHm0GuttanDjpWQqaNx6roK0ikqpZX15GPAmAfvz7bFzuU0hYBxrdWWKp6Ep8n7goQsuWN55EFQaFhEz0a/Q7uJDQY1u+cYe0QbM0zFkm6p5wLDfKEN8sQ+ENVn9Q3EikpoXDxfT71cPrzBzjkYTPdrGpPasgrgKFPM/x3SZ26eVYOFycKocLHtvffLaLUZkzUF0eBhb4aIbZ/lYnWdtAvmk6xKRZ28RYx+dpB3VaPSa2t9N5vrub95kZx5iBxr861TOHT/oMTdOubWI1SI4NkCWzDkcDxiM8C4R9wzHAL4SxeZTeB5IQxVCWl87U39XXScPRIJ3qqDFA3d6j8RQTolB4YP+YJbNQmTo+O0+zD2aAYPCE8UzZEFGBR4cITmzROj47Z73VddTwOHthYNTgZD+dv99dTpeH/DZeXUc1HsxRB2BIIEZVv6ujk8CJhNFG4Jjh2E3e5JEOpfQH9gkXGFZ/2rpJinhvdV1Io/QrAgpmaliqKVeuo5oN25DbhwGnXEPFIFI6xI1ejsHJ/tTJ9wHKlsUUf1Jhhcd0UML0rrS6ggoHDNmiwgHSITMMAeOzT6xy+jPQvPCRARhOyRu9CjMdqBUm2xVjGJnMZQBacwxy+tNbXc/ai+RUvcl0J3oGHGKeh7U7SNpKjkG10qpQaduQVTBA8wyHr7ozepVUep1FyWdEemiQF/LPReriDyvon6+Urf8We1bjj/AVwgAAAABJRU5ErkJggg==";
+CHS.street_lamp="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACIAAAB0CAYAAADgkOAoAAACO0lEQVR4nO2bP07DMBSHX6ycIItBgpHBB0GChTNwhh6EjQswM7EA4gSsLB0YqYS89ApBruTKvPhvQ5JX/D6pEjIl79fPL05IkwYmQCnVx36/Xq8bPCZgAZQnqJjThtZ69/IxmRHtFMQBfGEGczXWRugTY7bb7a/a7SHFwNN4qQZ1kVKaIOVGVGYRa8MUipnBNrJ6RBWGsJZMGIwZ841HjagC1a4Jd43ouq7PsRE0ogp2QfuzKYAXKlw0ZMMbRCVClBIrHgyiIrufO243bsc+3m9hLK3PhNZ6UMwXwPD6eDI6xD5IbDpkQK0Zf7gvWw9jUzvoEen51O6G7LgNcXp+BWcXd6NX6DbHgkbTY0KYAIZUiNwGb3P/QDpTkRuihF2Qt6druLx5HoSxZqYMYNlvcPO56r+/XoJvPDSEu7rildc7NabA5nMV3HumsOANMkexGIucs/rgILMbkYccfZcMRKZH2rkK6cQhhIwRATUFkRl7Tl1GcuAgs68jOvOclacGw0YwbKReIzJy3WzWILlwEAwbwbARDBvBsBEMG8HUZ0RSuVCj+fpIIdysmPqMpOAgGDaCYSOY+oxoPvoWUl+PpOAgmPrO4lPwgoapb2pS8Fdpdd8/IvnbiWPefQUQQQARBBBBABEEEEEAEQQQQQARBBBBABEEEEEAEQQQoaVy+1czVYCu6/rYQ2H4aaT/fyOLRMWP5p/wdqoN68IHx/68WTvPs3kh3IadxIiM9EPIVLPEk62AMGYWaVafsR+Rb9mRaI7/uwAAAABJRU5ErkJggg==";   /* 가로등 17x58 (기둥 중심 x=13, 등갓 렌즈 = 왼쪽 아래 노란 면, 렌즈 중심 약 (4,13)) */
 CHS.box_fridge="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAA4CAYAAACc//oCAAAFC0lEQVR42r1Zz2scVRz/zO5sZqu77s4k2bToKYtSPVhLDroEliDk0hRKLyVUXXMyp2rpXRD8C2JO8SRRQm8SYsUQKWEh5CQISgnI9lJBM9vdzbqD7uRH18P2O33z5v2YWaxfWDIz7+V9P+/7+/uegad09159UHQmwNNR+zFk34nYcdl3fmxxoWoAgCFizi/CvuuI1pH9D7ve4kLVMGTMf9qvo+d5+K9obv5K8PzI7cB64SUAgPHD/oMBy5xlnM/lcHxyCgAYy5gAELzLyPf7WjDlS5UAgCljDgA9z4NlZUOMfb8ffBMRP6YDlGJfep6HfC4XvLPPMgYkGd/vB8/0VzQfQLD7QAKkd5qcz+XQ87yIuEW7pzmWlQ2ek9hOinUzFrlIt5aVDUSqmmtZWaWaQgBEPs6Ll5UOu7BKv2MZUwrC//svsQ2wJNI/7w2qXeq8JQSAbODci/mQQYpIp19WKnFcMiUKmapFdbqlcRVz1gtSOoQqXY5lzJCdiNwwlgRkROIey5jCHbFRko0HKjXxtpUi/RedCbzx5uVIQOp5XrCg7/cjPxpn56nU1fO8kBeYfKaaqVSDkCxaII490BxeapSQHrkdMQAKSjOVKp4X8QZvigZFOV31LW6xIqoTIun4/yZTxHx35/vnwoy1gUg9MArzuAmHaL9+H5Xqu1EJ0O555rJ8IIr1FAdk3sNusHypEgYgKjx55rrkwtYFSSgVR7RxM5sqnScOxccnpzg+OQ1FtzjFSFLgqSSGRmoRlWqjVMcRAKWpC4nEp8qAysqZL0qJukedkPj4OhDIRopTqoxk4tZJwowjfn43Oksfy5gRr5ABSSWxaP7H9wU642NVHEsCOoseNiM5YbUskpp7+Ec8ALr2i1cFa4B8taxtzfgIqCsyVJIRSSmfy0Wiaqy+gO/3dD2ATO+qMaEKhgUoIv2ermUT0fKHN9C99QmyrTYAYG1uXt2aJQ0+Olv58/YdFFZX0B93hoB2d9RuKNstDyxO5lva3sLm9AEAoLC6Amvj6wBILDfko10SWtreQqc0iWsPJ7H2xRVce3gRAHB+dQX4cl0diHRNJ98NyZgDQGHcRa3r4HHxMBj/+KPaaIGIBSgDsLS9ha/eaQFoodZ9Ju5y2kCjeIjzulDMh1mZavgOyPf7WNreQuvCyyHGMlp4+1W5Ear0TcGIV9Hy7g46pUnYxd8BALWug8ZZUO2jcTZAOW0M17j5gT4OyECIbIN0Xhh3w0dxaSMAUU4bOPfpNwCATmkypIrUqCcbvMFJzwTTBtYLw0D0z+fvw3abo6VjWaDanD7A5vRBsNv1QhuNs0HAdL3QDtkFDziSjFQGSB7AziEfJ13Ptm3sOR3Uug7KaQOzbRuNswF+/ew9dFsl2G4TP/5yqFaBqsgkFZH4N6cPMNu2UU4bwY/AkPHtOR3sOR1xMuJzgSzMsrUhJSsKNEiHLb3WddDAIGSIs237aUCaSpYL+AMJy8pieXcHT14fSK2eJ5IQANhuM149IPN5GbESYJ8J3EhVsawKWpubx40HP8N2m/jttSchECJQ9H3iaAprc2+hrDqgoA5Zt3MCx+d43s1stzmMkm4TG1ev4/jkFK9cvPzswoK9MSGX3K/fjxzLyi4sWMOlOTe/+xYAsHH1egT4TKUavjG5e68+UF08EZi4FRMPhmUM0ZUNMLy0inPhFPfkK+7/Ly5UDYO9tlMtqjsNS3p7Rtd2/wJfKwDjBRZ4KQAAAABJRU5ErkJggg==";
 /* 우체통 포탑 40x63 (포탑+받침 통합, 투입구 안 노란 눈에서 사격) */
 /* 목숨 아이콘 토마토 7x7 (게임 HUD) */
@@ -343,7 +371,14 @@ chLoad();
 function chFrame(t,mv){return mv?3+((t>>3)&1):[0,1,0,2][(t>>4)&3];}
 function whiteSheet(k){if(WCACHE[k])return WCACHE[k];const im=CHI[k];if(!im||!im.complete||!im.width)return im;
   const c=mkCanvas(im.width,im.height),g=c.getContext('2d');g.drawImage(im,0,0);g.globalCompositeOperation='source-in';g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);return WCACHE[k]=c;}
+const GRIDC={};
+function gridSheet(im,key,S,q,r){const c0=GRIDC[key];if(c0)return c0;if(!im.complete||!im.width)return null;   /* 시트 전체를 프레임별로 (원본×q×r) 픽셀에 최근접 변환 → 1/r 도트 = 1픽셀 */
+  const n=Math.max(1,Math.round(im.width/S.w)),fw=Math.max(1,Math.round(S.w*q*r)),fh=Math.max(1,Math.round(S.h*q*r)),c=mkCanvas(fw*n,fh),g=c.getContext('2d');g.imageSmoothingEnabled=false;
+  for(let i=0;i<n;i++)g.drawImage(im,i*S.w,0,S.w,S.h,i*fw,0,fw,fh);c.fw=fw;c.fh=fh;return GRIDC[key]=c;}
 function drawCh(g,id,sz,x,y,face,fr,o){o=o||{};const S=CHS[id][sz],k=id+sz,im=o.white?whiteSheet(k):CHI[k];if(!im)return;
+  {const q0=o.k||(o.hi?.5:1),A=Math.round(Math.abs(g.getTransform().a))||1;   /* A = 이 캔버스의 1도트 = 몇 픽셀 */
+   if((q0*A)%1>1e-6&&!o.rot){const r=A%2===0?2:1,G=gridSheet(im,k+(o.white?'w':'')+'@'+q0+'r'+r,S,q0,r);if(G){   /* 그림 1픽셀이 화면 픽셀 정수배가 안 되면: 짝수 배율은 반 도트, 홀수 배율은 1도트 격자로 변환 */g.save();g.translate(Math.round(x),Math.round(y));if(face<0&&id!=='jm')g.scale(-1,1);if(o.alpha!=null)g.globalAlpha*=o.alpha;
+    g.drawImage(G,fr*G.fw,0,G.fw,G.fh,-Math.floor(G.fw/2)/r,-G.fh/r,G.fw/r,G.fh/r);g.restore();return;}}}
   const q=o.k||(o.hi?.5:1),h=Math.round(S.h*(o.sy||1))*q;g.save();g.translate(Math.round(x),Math.round(y));if(o.rot)g.rotate(o.rot);if(face<0&&id!=='jm')g.scale(-1,1); /* 주먹밥쿵야는 김 위치 고정: 반전 안 함 */if(o.alpha!=null)g.globalAlpha*=o.alpha;
   g.drawImage(im,fr*S.w,0,S.w,S.h,-Math.floor(S.w/2)*q,-h,S.w*q,h);g.restore();}
 
@@ -552,13 +587,14 @@ const GBARREL=[420,700,1700,2230,2380];
 /* 보스 패턴 */
 const BOSS_P1=['mg','shell','low','drop','mg','shell'],BOSS_P2=['mg','drop','low','game','shell','troop','drop','low'];   /* 1단계(체력 50% 초과) / 2단계 */
 const TAP_MAX=10;   /* 방향키 미니게임: 이 프레임 이하로 눌렀다 뗀 키만 입력으로 인정 (꾹 누른 이동은 무시) */
+const HOS_LINES=[[12,0,1,12],[7,2,1,11],[14,2,1,8],[10,4,1,7],[5,6,1,10],[3,9,1,4]],HOS_SPARK=[[9,0,3,3],[28,1,3,3],[2,6,5,5],[31,13,5,5]];   /* 인질 시트 효과 프레임 안 우울 줄·반짝이 위치 [x,y,w,h] */
 const BLK_SZ=16;   /* 낙하 블록 = 정사각형 1칸 (16x16 도트, 약 32cm) */
 const BLK_COL=[['#00ccf3','#80eaff','#0090b0'],['#fff419','#fffaa0','#c0b000'],['#ff5ad0','#ffaae8','#c02a98'],['#58d838','#a8f090','#309018']];   /* [기본, 위·왼쪽 밝게, 아래·오른쪽 어둡게] */
 const ARROW=['...#...','..###..','.#####.','#######','..###..','..###..','..###..'];   /* 미니게임 화살표 7x7 (위쪽 기준) */
 const GSPAWN=[[250,'s',2],[450,'s',3],[650,'s',2,1],[880,'d',1],[1000,'s',2],[1100,'d',2],[1250,'s',3],[1400,'d',1],
   [1950,'s',3],[2150,'s',3,1],[2450,'s',2],[2600,'d',1],[2700,'s',3]];
 const GWAVE=[[['s',2,0],['s',1,1]],[['s',2,1],['s',1,0],['d',1,0]],[['s',2,0],['s',2,1],['d',1,1]]];
-const GHOST=[[600,'H'],[1300,'G'],[2350,'H'],[2700,'G']];
+const GHOST=[[640,'H'],[1320,'G'],[2440,'H'],[2700,'G']];   /* 인질 위치: 상자·드럼통·우체통과 겹치지 않게 (인질 폭 36 = x±18) */
 const GAREA=[[0,'1. 오피스 거리'],[800,'2. 드론 감시 구역'],[1500,'3. 로비 포위 돌파'],[1900,'4. 경비 포탑'],[BOSSCAM,'BOSS']];
 function dMan(g,x,y,f,o){const S=o.s||1,P=(lx,ly,w,h,c)=>{const a=Math.round(lx*S),b=Math.round((lx+w)*S),t=Math.round(ly*S),u=Math.round((ly+h)*S);R(g,f>0?x+a:x-b,y+t,b-a,u-t,c);},cr=o.cr,oy=cr?10:0;   /* o.s = 배율 */o.after=()=>{if(o.tie){P(-2,-26+oy,4,2,'#e8e8e8');P(-1,-24+oy,2,8,o.tie);}};
   if(cr){P(-6,-10,12,6,o.pants);P(-6,-4,6,4,'#222');P(2,-4,6,4,'#222');}
@@ -842,16 +878,15 @@ class Gun{
     R(g,0,GG-6,304,46,'#121212');{const im=CHI.floor_tile;if(im&&im.width)for(let x=-(Math.round(c)%16);x<304;x+=16)g.drawImage(im,x,GG-6);}   /* 바닥 타일 16x40 (위 6줄 = 인도 턱, 발 디딤선 = GG) */
     {const TA=CHI.street_tree,TB=CHI.street_tree2,LC=['#becc6e','#d4e284','#a2af5b','#808d43'];g.save();g.imageSmoothingEnabled=false;   /* 가로수: 가로등(160px 간격) 사이 칸마다 불규칙 배치. 가끔 비우고, 위치를 흔들고, A/B 섞고, 좌우 반전 */
       for(let n=Math.floor(c/160)-1;n<Math.floor(c/160)+3;n++){if(hs(n*37+11)<.3)continue;const x=Math.round(140+n*160+(hs(n*41+13)-.5)*70-c);if(x<-70||x>374)continue;
-        const im=hs(n*47+19)<.5?TA:TB,fl=hs(n*43+17)<.5,top=GG-6-102;   /* 원본 2배로 그림 (사람 배율에 맞춤) */
-        if(PH_BOX){phBox(g,x-29,top,58,102,'prop');continue;}   /* 가로수 58x102 (약 2m) */
-        if(im&&im.width){if(fl){g.save();g.translate(x,0);g.scale(-1,1);g.drawImage(im,-26,top,58,102);g.restore();}else g.drawImage(im,x-26,top,58,102);}   /* 줄기 중심(원본 13 → 2배 26)을 기준으로 배치·반전 */
+        const im=hs(n*47+19)<.5?TA:TB,fl=hs(n*43+17)<.5,top=GG-6-102;   /* 가로수 58x102 (약 2m), 원본 1배 = 1도트 */
+        if(im&&im.width){if(fl){g.save();g.translate(x,0);g.scale(-1,1);g.drawImage(im,-26,top,58,102);g.restore();}else g.drawImage(im,x-26,top,58,102);}   /* 줄기 중심(이미지 x=26)을 기준으로 배치·반전. 아래 회색 = 가로수 보호판(인도 위) */
         for(let j=0;j<5;j++){const h=n*53+j*7,P=140+Math.round(hs(h+1)*100),t=((tk+Math.round(hs(h+2)*P))%P)/P;   /* 흩날리는 잎: 상태 없이 tick으로 계산. 나무마다 5장이 각자 주기로 떨어짐 */
           const ly=top+16+hs(h+3)*52+t*(GG-7-top-16-hs(h+3)*52),lx=x+(hs(h+4)-.5)*44-t*(18+hs(h+5)*24)+Math.sin(tk*.07+j*1.7)*3;   /* 왼쪽으로 바람에 밀리며 좌우로 살랑 */
           if(ly<GG-7)R(g,lx,ly,Math.sin(tk*.15+j)>0?2:1,1,LC[(n+j)&3]);}}   /* 뒤집히는 느낌: 폭 2↔1 */
       g.restore();}
-    {const LI=CHI.street_lamp,top=GG-6-116;   /* 원본 2배로 그림 */   /* 가로등 (160px 간격, x = 기둥 중심). 바닥 = 인도 윗면 GG-6 */
-      for(let x=-(c%160)-100;x<340;x+=160){if(PH_BOX)phBox(g,x-26,top,34,116,'prop');else if(LI&&LI.width){g.save();g.imageSmoothingEnabled=false;g.drawImage(LI,x-26,top,34,116);g.restore();}
-        const lx=x-18,ly=top+26,H=GG-6-ly;   /* 렌즈 중심(이미지 4,13) 바로 아래에서 빛 시작 */
+    {const LI=CHI.street_lamp,top=GG-6-116;   /* 가로등 34x116 (약 2.3m), 원본 1배 = 1도트 */   /* 가로등 (160px 간격, x = 기둥 중심). 바닥 = 인도 윗면 GG-6 */
+      for(let x=-(c%160)-100;x<340;x+=160){if(LI&&LI.width){g.save();g.imageSmoothingEnabled=false;g.drawImage(LI,x-26,top,34,116);g.restore();}
+        const lx=x-19,ly=top+20,H=GG-6-ly;   /* 렌즈 아랫면 중심(이미지 7,19) 바로 아래에서 빛 시작 */
         R(g,lx-12,ly-7,23,9,'rgba(255,236,150,.10)');R(g,lx-8,ly-10,15,15,'rgba(255,236,150,.10)');R(g,lx-7,ly-5,13,7,'rgba(255,240,170,.12)');   /* 렌즈 주변 은은한 후광 */
         for(let yy=0;yy<H;yy+=3){const f=yy/H,cx=lx+f*12,hw=4+Math.floor(f*24);   /* 빛 원뿔: 등갓이 기둥 쪽으로 기울어 있어 아래로 갈수록 살짝 오른쪽으로 퍼짐 */
           R(g,cx-hw,ly+yy,hw*2,3,'rgba(255,230,140,.09)');R(g,cx-hw*.45,ly+yy,hw*.9,3,'rgba(255,236,160,.06)');}   /* 바깥 원뿔 + 안쪽 밝은 심 */
@@ -867,10 +902,7 @@ class Gun{
     const TU=this.tur;if(!TU.dead){const x=TU.x-c;if(x>-30&&x<330){   /* 사격 예고 표시 + 체력 바 (우체통 위) */
       if(TU.tell&&warnBlink(TU.t%120-70))R(g,x-2,TU.y-12,4,6,'#ff4040');R(g,x-9,TU.y-4,18*TU.hp/TU.max,2,'#ff4030');}}
     for(const h of this.hos){const x=h.x-c;if(x<-40||x>344)continue;
-      if(PH_BOX){if(!h.free)phBox(g,x-18,h.y-52,36,52,'ally');else phBox(g,x-18,h.y-86,36,86,'ally');continue;}   /* 인질: 앉음 36x52 / 서기 36x86 */
-      if(!h.free){const Q=(a,b,w,hh,col)=>R(g,x+Math.round(a*HS),h.y+Math.round(b*HS),Math.round((a+w)*HS)-Math.round(a*HS),Math.round((b+hh)*HS)-Math.round(b*HS),col);   /* 묶여 앉은 인질 (사람 배율) */
-        Q(-6,-14,12,14,'#e8e0c8');Q(-4,-21,8,7,'#f0b880');Q(-4,-16,8,3,'#704020');Q(-7,-9,14,2,'#b08040');}
-      else{const s=h.t<40;dMan(g,x,h.y,s?1:-1,{s:HS,body:'#e8e0c8',pants:'#c8c0a8',hat:'#704020',run:!s,anim:h.t,cr:false,ax:0,ay:0});if(s)R(g,x+Math.round(3*HS),h.y-Math.round(42*HS),Math.round(3*HS),Math.round(8*HS),'#f0b880');}}
+      this.dHostage(g,h,x);}
     for(const it of this.it){const x=it.x-c;R(g,x-6,it.y-12,12,12,it.k==='H'?'#d03030':'#30a040');R(g,x-6,it.y-12,12,2,'#fff');T(g,it.k,x-4,it.y-10,'#fff');}
     // 착탄 예고 표시
     const mark=(x,col)=>{if(!warnBlink(this.tick))return;R(g,x-8,GG+1,16,2,col);R(g,x-1,GG-3,2,4,col);};
@@ -921,6 +953,19 @@ class Gun{
       if(m.t>0){if(--m.t===0)this.mineBoom(m,null);continue;}
       for(const p of this.pl)if(p&&!p.out&&!p.dead&&p.ground&&p.y>=GG&&pxHit(this.mineBody(m),this.pBody(p))){m.t=Math.max(1,this.G.fuse);this.api.sfx('beep');break;}}}
   /* ---- 그리기 조각: draw()와 픽셀 충돌 마스크(pBody·eBody·turBody·bossBody)가 같은 코드를 씀. x = 그릴 가로 위치 ---- */
+  /* 인질 양파쿵야: 모든 움직임은 정수 도트 단위, 사인 곡선으로 천천히 가속·감속 → 부드럽게 보임 */
+  dHostage(g,h,x){const im=CHI.hostage;if(!im||!im.width)return;const X=Math.round(x)-18,Y=h.y-52,ph=Math.round(h.x)%97;
+    const sh=(hop)=>{const w=20-2*Math.min(4,hop);R(g,Math.round(x)-w/2,h.y-1,w,2,'rgba(0,0,0,.28)');};   /* 발밑 그림자: 높이 뛸수록 작아짐 */
+    g.save();g.imageSmoothingEnabled=false;
+    if(!h.free){const k=this.tick+ph,b=Math.round((1-Math.cos(k*Math.PI/60))/2);   /* 잡힘: 2초 주기로 한숨 쉬듯 1도트 처짐 */
+      sh(0);g.drawImage(im,0,0,36,52,X,Y+b,36,52);
+      HOS_LINES.forEach(([lx,ly,lw,lh],i)=>{const p=((k+i*13)%78)/78,dy=Math.floor(p*3);   /* 우울 줄: 줄마다 시차를 두고 3도트 흘러내리며 나타났다 사라짐 */
+        g.globalAlpha=p<.2?p/.2:p>.75?(1-p)/.25:1;g.drawImage(im,36+lx,ly,lw,lh,X+lx,Y+ly+dy+b,lw,lh);});}
+    else{const t=h.t,hop=t<=40?Math.round(Math.abs(Math.sin(t*Math.PI/20))*6):Math.round(Math.abs(Math.sin((t-40)*Math.PI/16))*3);   /* 풀려남: 제자리에서 두 번 콩콩 → 왼쪽으로 통통 뛰며 달아남 */
+      sh(hop);g.drawImage(im,72,0,36,52,X,Y-hop,36,52);
+      HOS_SPARK.forEach(([sx,sy,sw,shh],i)=>{const q=(t+i*11)%36;if(q>=30)return;   /* 반짝이: 각자 다른 박자로 깜빡이며 1도트씩 떠오름 */
+        g.globalAlpha=q<6?q/6:q>24?(30-q)/6:1;g.drawImage(im,108+sx,sy,sw,shh,X+sx,Y+sy-hop-(q>15?1:0),sw,shh);});}
+    g.restore();}
   dDrone(g,e,x){const y=Math.round(e.y),w=(e.anim>>1)&1;R(g,x-8,y-2,16,5,'#4a4a52');R(g,x-3,y-5,6,3,'#6a6a72');R(g,x-10,y-5+w,6,1,'#ccc');R(g,x+4,y-5+w,6,1,'#ccc');}
   dSol(g,e,x){if(!PH_BOX){dMan(g,x,e.y,e.face,{s:HS,body:'#2c3550',pants:'#1c2236',hat:'#1a1414',tie:'#c03040',run:e.st==='run',anim:e.anim,cr:false,ax:e.ax,ay:e.ay});return;}
     phBox(g,x-18,e.y-86,36,86,'enemy');   /* 사람 170cm = 36x86 */
@@ -1403,7 +1448,7 @@ function upLauncher(){
   if(anyP('a')||anyP('start')){startGame(sel);return;}
   if(anyP('d')){openSettings();return;}
   if(anyP('c')){AU.sfx('select');showRank(sel);return;}
-  if(demoI!==sel){demo=new GAMES[sel].cls(DEMO_API,true);demoI=sel;CSD=clamp(2*Math.ceil(Math.min(pv.width/demo.w,pv.height/demo.h)/2),2,12);demoCv=mkCanvas(demo.w*CSD,demo.h*CSD);dctx=demoCv.getContext('2d');dctx.imageSmoothingEnabled=false;}
+  if(demoI!==sel){demo=new GAMES[sel].cls(DEMO_API,true);demoI=sel;CSD=pickN(Math.min(pv.width/demo.w,pv.height/demo.h));demoCv=mkCanvas(demo.w*CSD,demo.h*CSD);dctx=demoCv.getContext('2d');dctx.imageSmoothingEnabled=false;}
   demo.update(NOIN);
   if(unlocked&&performance.now()-lastInput>IDLE_MAIN)startCut();}
 /* 랭킹보드: 중앙 상단 로고 + 게임 순서대로 왼쪽부터 TOP 10 */
@@ -1416,7 +1461,7 @@ function openBoard(){mode='board';const medal=['#ffd84a','#d8e0ec','#e0a060'];
 function closeBoard(){$('board').hidden=true;mode='launcher';padHold=true;touch();}
 function upBoard(){if(KEYS.some(k=>PIN[0].p[k]||PIN[1].p[k]))closeBoard();}
 function drawPreview(){if(!demo)return;dctx.setTransform(CSD,0,0,CSD,0,0);demo.draw(dctx);pg.fillStyle='#000';const W=pv.width,H=pv.height;pg.fillRect(0,0,W,H);
-  const s=Math.min(W/demo.w,H/demo.h),w=demo.w*s,h=demo.h*s;pg.drawImage(demoCv,(W-w)/2,(H-h)/2,w,h);}
+  pg.imageSmoothingEnabled=false;pg.drawImage(demoCv,Math.floor((W-demoCv.width)/2),Math.floor((H-demoCv.height)/2));}   /* 1:1 (확대·축소 없음) */
 
 /* ---- 게임 ---- */
 let players=1,playT=0,resT=0;   /* 한 판 시간 제한 없음 (난이도와 무관) */
@@ -1437,10 +1482,11 @@ function launch(i,n){hideOv();mode='launcher';
 let hintPend=false;
 let CS=2; /* 캔버스 내부 해상도 배율: 실제 화면 픽셀에 맞춰 자동 결정(최소 2) */
 let CSD=2; /* 미리보기 데모 해상도 (화면에 맞춰 자동) */
-function setupPreview(){const st=Math.min(innerWidth/1280,innerHeight/720)*(window.devicePixelRatio||1);pv.width=Math.round(668*st);pv.height=Math.round(376*st);pg.imageSmoothingEnabled=true;pg.imageSmoothingQuality='high';demoI=-1;}
+function setupPreview(){const st=stageDev();pv.width=Math.round(668*st);pv.height=Math.round(376*st);pg.imageSmoothingEnabled=false;demoI=-1;snapLater(pv);}
 const GUT=150; /* 좌우 안내 패널 최소 폭 */
-function setupCanvas(){const s=Math.min((1280-GUT*2)/game.w,720/game.h),st=Math.min(innerWidth/1280,innerHeight/720)*(window.devicePixelRatio||1);
-  CS=clamp(2*Math.ceil((s*st-.05)/2),2,12);   /* 화면에 보이는 크기 이상 해상도로 그림 (대형·4K 화면 대응) */gc.width=game.w*CS;gc.height=game.h*CS;gg=gc.getContext('2d');gg.imageSmoothingEnabled=false;gc.style.width=game.w*s+'px';gc.style.height=game.h*s+'px';
+function setupCanvas(){const dev=stageDev();
+  CS=pickN(Math.min((1280-GUT*2)*dev/game.w,720*dev/game.h));   /* 1도트 = 화면 CS×CS 픽셀 (정수). 남는 곳은 스테이지 배경이 보임 */
+  gc.width=game.w*CS;gc.height=game.h*CS;gg=gc.getContext('2d');gg.imageSmoothingEnabled=false;const s=CS/dev;gc.style.width=game.w*s+'px';gc.style.height=game.h*s+'px';snapLater(gc);
   const side=(1280-game.w*s)/2,G=GAMES[gi],narrow=side<230;
   ['sideL','sideR'].forEach(id=>{const el=$(id);el.hidden=false;el.style.width=side+'px';el.classList.toggle('narrow',narrow);});
   $('sideL').innerHTML=`<h3 class="ol">${G.name}</h3><div class="keys">${keyHTML(G.keys).split(' · ').map(t=>'<div>'+t+'</div>').join('')}</div>`;
@@ -1555,8 +1601,8 @@ let FILTER=(()=>{try{return localStorage.getItem('pixelArcadeFilter')!=='0';}cat
 function applyFilter(){$('stage').classList.toggle('nofilter',!FILTER||mode==='cut'||mode==='title');}
 const IDLE_MAIN=IS_MOB?Infinity:60000,IDLE_TITLE=IS_MOB?Infinity:30000,IDLE_GAME=IS_MOB?Infinity:90000;   /* 메인 60초 · 타이틀 30초 · 게임/랭킹 입력 90초 (모바일: 무입력 시 컷신으로 넘어가지 않음) */
 let CUTCLICK=false,cutK=4;const cutCv=$('cutCv');let cutG=cutCv.getContext('2d');
-function sizeCut(){const st=Math.min(innerWidth/1280,innerHeight/720)*(window.devicePixelRatio||1);cutK=clamp(Math.ceil(4*st),4,16);
-  cutCv.width=CUT_W*cutK;cutCv.height=CUT_H*cutK;cutG=cutCv.getContext('2d');cutG.imageSmoothingEnabled=false;}
+function sizeCut(){const dev=stageDev();cutK=pickN(Math.min(1280*dev/CUT_W,720*dev/CUT_H));   /* 16:9 화면(720p·1080p·1440p·4K)은 꽉 참, 그 외는 정수 배율 + 위아래/좌우 검정 */
+  cutCv.width=CUT_W*cutK;cutCv.height=CUT_H*cutK;{const w=CUT_W*cutK/dev,h=CUT_H*cutK/dev,st=cutCv.style;st.width=w+'px';st.height=h+'px';st.left=(1280-w)/2+'px';st.top=(720-h)/2+'px';snapLater(cutCv);}cutG=cutCv.getContext('2d');cutG.imageSmoothingEnabled=false;}
 function startCut(){hideOv();$('rk').hidden=true;$('board').hidden=true;$('launcher').hidden=true;$('game').hidden=true;game=null;
   mode='cut';applyFilter();sizeCut();Cut.start();$('cut').hidden=false;$('cut').classList.remove('locked');$('cut').classList.remove('title');$('ttl').hidden=true;AU.bgm(true,'intro',.6);touch();}   /* 컷씬: 인트로 음악 */
 /* 앱 실행 직후: 메인 화면이 아니라 시나리오 첫 장면을 딤드+로고 뒤에 깔아 둠 (키를 누르면 시나리오 시작) */
@@ -1590,7 +1636,7 @@ function openPause(){mode='pause';AU.duck(.3);AU.sfx('select');showMenu('일시�
 function resume(){hideOv();mode='game';AU.duck(1);touch();}
 function restart(){hideOv();playT=0;best=[0,0];startRun();AU.bgm(true);game=new GAMES[gi].cls(API,false,{players});setupCanvas();mode='game';touch();}
 function openSettings(k=0){mode='settings';const MS=IS_MOB?1:0;   /* 모바일: 항상 무료 플레이 → '프리 플레이' 항목을 숨기고 나머지 번호를 1칸씩 당김 */
-  showMenu('설정','',[[`프리 플레이: ${FREE?'켬':'끔'}`,()=>{FREE=!FREE;updCredit();openSettings(0);}],[`사운드: ${AU.on?'켬':'끔'}`,()=>{AU.on=!AU.on;openSettings(1);}],[`화면 필터: ${FILTER?'켬':'끔'}`,()=>{FILTER=!FILTER;try{localStorage.setItem('pixelArcadeFilter',FILTER?'1':'0');}catch(e){}applyFilter();openSettings(2);}],['랭킹 초기화',()=>{showMenu('랭킹 초기화','모든 게임의 랭킹 기록을 지웁니다',[['취소',()=>openSettings(4)],['초기화',()=>{rkSave({});renderList();toast('랭킹을 초기화했습니다');openSettings(4);}]],()=>openSettings(4));}],['전체 화면',()=>{const d=document;if(!d.fullscreenElement)d.documentElement.requestFullscreen&&d.documentElement.requestFullscreen().catch(()=>{});else d.exitFullscreen();}],['닫기',closeSet]].slice(MS),closeSet);ovSel=Math.max(0,k-MS);paintOv();}
+  showMenu('설정','',[[`프리 플레이: ${FREE?'켬':'끔'}`,()=>{FREE=!FREE;updCredit();openSettings(0);}],[`사운드: ${AU.on?'켬':'끔'}`,()=>{AU.on=!AU.on;openSettings(1);}],[`화면 필터: ${FILTER?'켬':'끔'}`,()=>{FILTER=!FILTER;try{localStorage.setItem('pixelArcadeFilter',FILTER?'1':'0');}catch(e){}applyFilter();openSettings(2);}],['전체 화면',()=>{const d=document;if(!d.fullscreenElement)d.documentElement.requestFullscreen&&d.documentElement.requestFullscreen().catch(()=>{});else d.exitFullscreen();}],['닫기',closeSet]].slice(MS),closeSet);ovSel=Math.max(0,k-MS);paintOv();}
 function closeSet(){hideOv();mode='launcher';}
 
 /* ---- 마우스 ---- */
@@ -1601,15 +1647,17 @@ $('stage').addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mousemove',touch);
 
 /* ---- 화면 맞춤 · 루프 ---- */
-function fit(){if(typeof game!=='undefined'&&game)setupCanvas();setupPreview();if(typeof sizeCut==='function'&&(mode==='cut'||mode==='title'))sizeCut();if(IS_MOB&&typeof mobFit==='function'){mobFit();return;}   /* 모바일: 노치·하단 바(safe-area)를 피해 맞춤 */
-  const s=Math.min(innerWidth/1280,innerHeight/720);$('stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+function fit(){if(IS_MOB&&typeof mobFit==='function')mobFit();else{const s=Math.min(innerWidth/1280,innerHeight/720);$('stage').style.transform=`translate(-50%,-50%) scale(${s})`;}
+  if(typeof game!=='undefined'&&game)setupCanvas();setupPreview();if(typeof sizeCut==='function'&&(mode==='cut'||mode==='title'))sizeCut();}   /* 모바일: mobFit이 노치·하단 바(safe-area)를 피해 스테이지를 맞춤 */
 addEventListener('resize',fit);fit();
 setInterval(()=>{const d=new Date();$('clock').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   $('pd1').classList.toggle('on',padCount>0);$('pd2').classList.toggle('on',padCount>1);},1000);
 function frame(){poll();
   if(mode==='cut'){if(unlocked)upCut();}else if(mode==='title')upTitle();else if(mode==='launcher')upLauncher();else if(mode==='game')upGame();else if(mode==='cont')upCont();else if(mode==='result')upResult();else if(mode==='name')upName();else if(mode==='rank')upRank();else if(mode==='board')upBoard();else upMenu();
   escP=false;}
-function render(){if(mode==='cut'||mode==='title'){drawCut();return;}if(mode==='launcher'||mode==='settings'||mode==='name'||mode==='rank')drawPreview();else if(game){gg.setTransform(CS,0,0,CS,0,0);game.draw(gg);}}
+function render(){if(SNAP.size)snapNow();if(mode==='cut'||mode==='title'){drawCut();return;}if(mode==='launcher'||mode==='settings'||mode==='name'||mode==='rank')drawPreview();else if(game){gg.setTransform(CS,0,0,CS,0,0);game.draw(gg);scan(gg,CS);}}
+/* 화면 필터(줄무늬): 도트 한 줄마다 아래쪽 절반을 어둡게 → 모든 도트가 같은 모양 */
+function scan(g,N){if(!FILTER||N<2)return;const d=Math.floor(N/2),c=g.canvas;g.setTransform(1,0,0,1,0,0);g.fillStyle='rgba(0,0,0,.18)';for(let y=N-d;y<c.height;y+=N)g.fillRect(0,y,c.width,d);}
 let acc=0,last=performance.now();
 function loop(now){acc+=Math.min(100,now-last);last=now;let n=0;while(acc>=1000/60&&n<4){frame();acc-=1000/60;n++;}render();requestAnimationFrame(loop);}
 renderList();updCredit();
