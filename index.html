@@ -370,7 +370,21 @@ function whiteSheet(k){if(WCACHE[k])return WCACHE[k];const im=CHI[k];if(!im||!im
 const GRIDC={};
 function gridSheet(im,key,S,q,r){const c0=GRIDC[key];if(c0)return c0;if(!im.complete||!im.width)return null;   /* 시트 전체를 프레임별로 (원본×q×r) 픽셀에 최근접 변환 → 1/r 도트 = 1픽셀 */
   const n=Math.max(1,Math.round(im.width/S.w)),fw=Math.max(1,Math.round(S.w*q*r)),fh=Math.max(1,Math.round(S.h*q*r)),c=mkCanvas(fw*n,fh),g=c.getContext('2d');g.imageSmoothingEnabled=false;
+  if(q*r<1){const D=pxDown(im,S,n,fw,fh);if(D){g.putImageData(D,0,0);c.fw=fw;c.fh=fh;return GRIDC[key]=c;}}   /* 축소: 최근접은 외곽선·눈 픽셀이 빠지므로 블록 대표색으로 */
   for(let i=0;i<n;i++)g.drawImage(im,i*S.w,0,S.w,S.h,i*fw,0,fw,fh);c.fw=fw;c.fh=fh;return GRIDC[key]=c;}
+/* 도트 그림 축소: 결과 1픽셀 = 원본 블록. 블록 안 가장 많은 색을 쓰되 어두운 색(외곽선·눈)은 가중치를 줘서 선이 끊기지 않게,
+   불투명 픽셀이 블록의 절반 미만이면 투명 (단 어두운 외곽선은 남김) */
+function pxDown(im,S,n,fw,fh){let src;try{const t=mkCanvas(im.width,im.height),tg=t.getContext('2d');tg.drawImage(im,0,0);src=tg.getImageData(0,0,im.width,im.height);}catch(e){return null;}
+  const sd=src.data,W=im.width,out=new ImageData(fw*n,fh),od=out.data,sx=S.w/fw,sy=S.h/fh;
+  for(let i=0;i<n;i++)for(let ty=0;ty<fh;ty++)for(let tx=0;tx<fw;tx++){
+    const x0=Math.floor(tx*sx),x1=Math.max(x0+1,Math.floor((tx+1)*sx)),y0=Math.floor(ty*sy),y1=Math.max(y0+1,Math.floor((ty+1)*sy));
+    const cnt=new Map();let tot=0,op=0,dark=0;
+    for(let y=y0;y<y1&&y<S.h;y++)for(let x=x0;x<x1&&x<S.w;x++){const o=(y*W+i*S.w+x)*4;tot++;if(sd[o+3]<128)continue;op++;
+      const lum=(sd[o]*.3+sd[o+1]*.59+sd[o+2]*.11)/255,key=(sd[o]<<16)|(sd[o+1]<<8)|sd[o+2],dk=lum<.35;if(dk)dark++;
+      cnt.set(key,(cnt.get(key)||0)+(dk?2.1:1));}
+    if(!op||(op*2<tot&&!dark))continue;let best=0,bs=-1;for(const[k,v]of cnt)if(v>bs){bs=v;best=k;}
+    const p=(ty*fw*n+i*fw+tx)*4;od[p]=best>>16&255;od[p+1]=best>>8&255;od[p+2]=best&255;od[p+3]=255;}
+  return out;}
 function drawCh(g,id,sz,x,y,face,fr,o){o=o||{};const S=CHS[id][sz],k=id+sz,im=o.white?whiteSheet(k):CHI[k];if(!im)return;
   {const q0=o.k||(o.hi?.5:1),A=Math.round(Math.abs(g.getTransform().a))||1;   /* A = 이 캔버스의 1도트 = 몇 픽셀 */
    if((q0*A)%1>1e-6&&!o.rot){const r=A%2===0?2:1,G=gridSheet(im,k+(o.white?'w':'')+'@'+q0+'r'+r,S,q0,r);if(G){   /* 그림 1픽셀이 화면 픽셀 정수배가 안 되면: 짝수 배율은 반 도트, 홀수 배율은 1도트 격자로 변환 */g.save();g.translate(Math.round(x),Math.round(y));if(face<0&&id!=='jm')g.scale(-1,1);if(o.alpha!=null)g.globalAlpha*=o.alpha;
