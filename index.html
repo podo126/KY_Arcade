@@ -150,6 +150,50 @@ body{font:700 24px/1 var(--kr);user-select:none;-webkit-user-select:none;-webkit
 #start{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;background:rgba(0,6,24,.82);cursor:pointer}
 #start img{width:528px;height:288px;image-rendering:pixelated}
 #start div{font:14px var(--pf);color:var(--yellow);animation:blink 1s steps(1) infinite}
+/* ===== 픽셀 모던 스킨 (2vs2 와 같은 UI) ===== */
+/* 배치 · 크기는 그대로 두고 겉모양만: 창틀을 그림 조각(border-image) 대신 CSS 사각형 층으로 그림 → 화면 배율이 정수가 아니어도 이음새 줄 없음
+   --L 테두리 · --F 바탕 · --H 위 하이라이트 · --D 아래 음영 · --S 아래 그림자 (테두리 16px 는 여백 · 창 = 위 0 ~ 아래 4px 전, 그림자 = 맨 아래 4px) */
+:root{--ink:#082b44;--ok:#58d838;--cut:polygon(0 2px,2px 2px,2px 0,calc(100% - 2px) 0,calc(100% - 2px) 2px,100% 2px,100% calc(100% - 2px),calc(100% - 2px) calc(100% - 2px),calc(100% - 2px) 100%,2px 100%,2px calc(100% - 2px),0 calc(100% - 2px))}
+.fr,.fr-item,.fr-on,.fr-warn,.fr-dark{border-image:none!important;border-color:transparent;
+  --L:var(--ink);--F:rgba(10,62,98,.86);--H:rgba(255,255,255,.13);--D:rgba(0,0,0,.16);--S:rgba(0,20,40,.35);
+  background:
+    linear-gradient(var(--L),var(--L)) 2px 2px/2px 2px no-repeat,
+    linear-gradient(var(--L),var(--L)) calc(100% - 2px) 2px/2px 2px no-repeat,
+    linear-gradient(var(--L),var(--L)) 2px calc(100% - 6px)/2px 2px no-repeat,
+    linear-gradient(var(--L),var(--L)) calc(100% - 2px) calc(100% - 6px)/2px 2px no-repeat,
+    linear-gradient(var(--L),var(--L)) 4px 0/calc(100% - 8px) 2px no-repeat,
+    linear-gradient(var(--L),var(--L)) 4px calc(100% - 4px)/calc(100% - 8px) 2px no-repeat,
+    linear-gradient(var(--L),var(--L)) 0 4px/2px calc(100% - 12px) no-repeat,
+    linear-gradient(var(--L),var(--L)) 100% 4px/2px calc(100% - 12px) no-repeat,
+    linear-gradient(var(--H),var(--H)) 4px 2px/calc(100% - 8px) 2px no-repeat,
+    linear-gradient(var(--D),var(--D)) 4px calc(100% - 6px)/calc(100% - 8px) 2px no-repeat,
+    linear-gradient(var(--F),var(--F)) 2px 2px/calc(100% - 4px) calc(100% - 8px) no-repeat,
+    linear-gradient(var(--S),var(--S)) 4px 100%/calc(100% - 8px) 4px no-repeat;
+  background-origin:border-box;background-clip:border-box}   /* background 한 줄 뒤에 둬야 테두리 영역까지 그림 */
+.fr-item{--F:rgba(255,255,255,.15);--H:rgba(255,255,255,.35)}
+.fr-on,#ovB button.on,#btnSet:hover,#btnSet:focus-visible,.rk-close:hover{--F:#fff419;--H:#fffbb0;--D:#d6c800;color:var(--ink)}
+.fr-warn{--F:#e83a2a;--H:#ff8a7a;--D:#b02a1a}
+.fr-dark{--F:rgba(4,26,44,.92);--H:rgba(255,255,255,.1);--D:transparent}
+#ovB button.on{text-shadow:none}#ovB button.on::before{content:none}
+#ovl .fr,#rkBox{--F:rgba(10,62,98,.97)}   /* 가운데 창: 뒤 화면이 비치지 않게 */
+#items li.fr-on .nm{color:var(--ink);text-shadow:none}
+/* 배경: 하늘색 그라데이션 + 옅은 체크 */
+#stage{background-color:#0a8fc6;background-image:conic-gradient(rgba(255,255,255,.04) 25%,transparent 0 50%,rgba(255,255,255,.04) 0 75%,transparent 0),linear-gradient(#12a3dc,#0a8fc6 40%,#06679a);background-size:64px 64px,100% 100%;background-position:0 0,0 0}
+#board{background:inherit}
+/* 글자: 굵은 검정 외곽선 → 아래 2px 딱딱한 그림자 */
+.ol{text-shadow:0 2px 0 var(--ink)}
+/* 작은 칸: 모서리 2px 깎기 (도트 모서리) · 얇은 선 정리 */
+.kk,.pads i,.rk-in,.rk-grid button,#pvRank{clip-path:var(--cut);border-radius:0}
+.kk{background:rgba(255,255,255,.08)}
+.pads i{box-shadow:inset 0 0 0 2px #7fe0ff}.pads i.on{box-shadow:inset 0 0 0 2px var(--ink)}
+.rk-in{border-width:2px}.rk-grid button{border:0;box-shadow:inset 0 -2px 0 rgba(0,0,0,.2)}.rk-grid button.on{box-shadow:inset 0 0 0 2px var(--yellow)}
+.brow{border-bottom:2px solid rgba(255,255,255,.12)}
+.rk-qr img{border:0;box-shadow:0 -4px 0 var(--ink),0 4px 0 var(--ink),-4px 0 0 var(--ink),4px 0 0 var(--ink)}
+/* 게임 화면 테두리: 도트 모서리 (위 · 아래 · 옆으로만 그려서 모서리가 비어 보임) + 아래 그림자 */
+#gc{box-shadow:0 -4px 0 var(--ink),0 4px 0 var(--ink),-4px 0 0 var(--ink),4px 0 0 var(--ink),0 8px 0 rgba(0,20,40,.35)}
+/* 누름 효과: 아래로 3px · 그림자 사라짐 · 살짝 어둡게 (마우스 · 터치 · 결정 키) */
+#items li,#ovB button,#btnSet,.rk-close{transition:transform .08s,filter .08s}
+#items li.press,#items li:active,#ovB button.press,#ovB button:active,#btnSet:active,.rk-close:active{transform:translateY(3px);--S:transparent;filter:brightness(.92)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 </head>
@@ -1757,5 +1801,10 @@ async function getSetting(key) {
 }
 logEvent('arcade', 'visit');
 </script>
+<script>/* 픽셀 모던 스킨: 결정 키를 누르면 선택된 버튼 · 목록 칸에 누름 효과 (0.16초) */
+(()=>{const K=new Set(['Enter','NumpadEnter','Space','KeyZ','KeyJ','Numpad1','Digit1']);
+  document.addEventListener('keydown',e=>{if(!K.has(e.code)||e.repeat)return;const o=document.getElementById('ovl');
+    const b=o&&!o.hidden?document.querySelector('#ovB button.on'):document.querySelector('#items li.fr-on');if(!b)return;
+    b.classList.remove('press');void b.offsetWidth;b.classList.add('press');clearTimeout(b._pt);b._pt=setTimeout(()=>b.classList.remove('press'),160);},true);})();</script>
 </body>
 </html>
